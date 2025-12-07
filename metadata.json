@@ -1,0 +1,7 @@
+{
+  "name": "Gemini 3 Fractal Hand Control",
+  "description": "A viral-style interactive particle system combining 3D Mandelbulb and 2D Julia sets, controlled by hand gestures via MediaPipe.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
