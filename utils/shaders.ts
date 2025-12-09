@@ -650,6 +650,7 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
     }, []);
 
     return (
+      <div>
       <div className="w-full h-full cursor-move" ref={containerRef}>
         <canvas className="block w-full h-full" ref={canvasRef} />
         <video className="hidden" ref={videoRef} playsInline muted />
