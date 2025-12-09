@@ -1,665 +1,318 @@
-import React, {
-  useEffect,
-  useRef,
-  useImperativeHandle,
-  forwardRef,
-} from "react";
-import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass";
-import { vertexShader, fragmentShader } from "../utils/shaders";
-import { FractalMode, HandGestures, AnimationPreset } from "../types";
 
-declare class Hands {
-  constructor(config: { locateFile: (file: string) => string });
-  setOptions(options: any): void;
-  onResults(callback: (results: any) => void): void;
-  send(input: any): Promise<void>;
-  close(): void;
+export const vertexShader = `
+uniform float uTime;
+uniform float uMode; // 0=3D, 1=Julia, 2=Mandelbrot, 3=Tricorn, 4=BurningShip, 5=MengerSponge, 6=Sierpinski
+uniform vec3 uHandPos; // World space
+uniform float uAttractStrength;
+uniform float uRepelStrength;
+uniform float uPower; // Fractal power
+uniform vec2 uJuliaC; // C parameter for Julia
+uniform float uPinchScale;
+uniform float uExplosion; // 0.0 to 1.0 based on clapping
+uniform float uChaos; // 0.0 to 1.0 based on fist/punch
+uniform float uSnap; // 0.0 to 1.0 based on snapping fingers
+uniform float uMaxIter; // Controlled by Advanced Settings
+uniform float uVisualMode; // 1.0 if purely visual (static bg), 0.0 if interactive
+uniform float uColorMode; // 0=Cosmic, 1=Magma, 2=Aqua, 3=Matrix, 4=Cyberpunk
+
+// Navigation Uniforms
+uniform float uZoom;
+uniform vec2 uPan;
+
+attribute float aSize;
+attribute vec3 aRandom; // Random seed per particle
+
+varying vec3 vColor;
+varying float vAlpha;
+
+// --- FRACTAL MATH ---
+
+// 3D Mandelbulb
+float DE_Mandelbulb(vec3 p, float power) {
+    vec3 z = p;
+    float dr = 1.0;
+    float r = 0.0;
+    for (int i = 0; i < 8; i++) { 
+        r = length(z);
+        if (r > 2.0) break;
+        float theta = acos(z.z / r);
+        float phi = atan(z.y, z.x);
+        dr = pow(r, power - 1.0) * power * dr + 1.0;
+        float zr = pow(r, power);
+        theta = theta * power + uTime * 0.1;
+        phi = phi * power + uTime * 0.05;
+        z = zr * vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+        z += p;
+    }
+    return 0.5 * log(r) * r / dr;
 }
 
-interface Results {
-  multiHandLandmarks: any[][];
-  image: any;
-  multiHandedness: any[];
+// 3D Menger Sponge
+float DE_MengerSponge(vec3 p) {
+    float d = length(max(abs(p) - vec3(1.0), 0.0));
+    float s = 1.0;
+    for(int i=0; i<4; i++) {
+        vec3 a = mod(p * s, 2.0) - 1.0;
+        s *= 3.0;
+        vec3 r = abs(1.0 - 3.0 * abs(a));
+        float da = max(r.x, r.y);
+        float db = max(r.y, r.z);
+        float dc = max(r.z, r.x);
+        float c = (min(da, min(db, dc)) - 1.0) / s;
+        d = max(d, c);
+    }
+    return d;
 }
 
-interface FractalVisProps {
-  mode: FractalMode;
-  onStatsUpdate: (stats: string) => void;
-  attractionSensitivity: number;
-  pinchSensitivity: number;
-  morphSpeed: number;
-  iterations?: number;
-  power?: number;
-  interactiveMode?: boolean;
-  activeAnimation?: AnimationPreset;
-  colorMode?: number;
+// 3D Sierpinski Tetrahedron
+float DE_Sierpinski(vec3 p) {
+    vec3 a1 = vec3(1.0, 1.0, 1.0);
+    vec3 a2 = vec3(-1.0, -1.0, 1.0);
+    vec3 a3 = vec3(1.0, -1.0, -1.0);
+    vec3 a4 = vec3(-1.0, 1.0, -1.0);
+    vec3 c;
+    float dist, d;
+    int n = 0;
+    p = p * 1.5;
+    while (n < 8) {
+         c = a1; dist = length(p-a1);
+         d = length(p-a2); if (d < dist) { c = a2; dist=d; }
+         d = length(p-a3); if (d < dist) { c = a3; dist=d; }
+         d = length(p-a4); if (d < dist) { c = a4; dist=d; }
+         p = 2.0 * p - c;
+         n++;
+    }
+    return length(p) * pow(2.0, -float(n));
 }
 
-export interface FractalVisRef {
-  captureImage: () => string;
-}
+vec2 csqr(vec2 a) { return vec2(a.x*a.x - a.y*a.y, 2.0*a.x*a.y); }
 
-const PARTICLE_COUNT = 80000;
+// Iterators
+vec3 IterateFractal(vec2 pos, float mode) {
+    vec2 z = vec2(0.0);
+    vec2 c = vec2(0.0);
+    
+    // pos is already transformed by pan/zoom in main()
+    vec2 uv = pos; 
+    
+    bool isJulia = (abs(mode - 1.0) < 0.1);
+    
+    if (isJulia) {
+        z = uv;
+        c = uJuliaC;
+    } else {
+        z = vec2(0.0); 
+        c = uv; 
+    }
 
-const lerp = (start: number, end: number, t: number) =>
-  start * (1 - t) + end * t;
+    float iter = 0.0;
+    
+    float loopLimit = uMaxIter > 0.0 ? uMaxIter : 20.0;
 
-export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
-  (
-    {
-      mode,
-      onStatsUpdate,
-      attractionSensitivity,
-      pinchSensitivity,
-      morphSpeed,
-      iterations = 20,
-      power = 8.0,
-      interactiveMode = true,
-      activeAnimation = "NONE",
-      colorMode = 0,
-    },
-    ref
-  ) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    // Three.js Refs
-    const sceneRef = useRef<THREE.Scene | null>(null);
-    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-    const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-    const materialRef = useRef<THREE.ShaderMaterial | null>(null);
-    const particlesRef = useRef<THREE.Points | null>(null);
-    const composerRef = useRef<EffectComposer | null>(null);
-    const bloomPassRef = useRef<UnrealBloomPass | null>(null);
-
-    // Navigation State
-    const navRef = useRef({
-      zoom: 1.0,
-      pan: new THREE.Vector2(0, 0),
-      isDragging: false,
-      lastMouse: new THREE.Vector2(0, 0),
-    });
-
-    // State Refs
-    const gesturesRef = useRef<HandGestures>({
-      indexTip: { x: 0, y: 0, z: 0 },
-      isPinching: false,
-      pinchDistance: 0,
-      isPalmOpen: false,
-      isFist: false,
-      isSnapping: false,
-      isWaving: false,
-      isStopped: false,
-      wristRotation: 0,
-      isVisible: false,
-      isClapping: false,
-      handsDistance: 100,
-    });
-
-    const smoothedRef = useRef({
-      handPos: new THREE.Vector3(100, 100, 100),
-      pinch: 0,
-      rotation: 0,
-      attract: 0,
-      repel: 0,
-    });
-
-    const waveHistoryRef = useRef<number[]>([]);
-
-    // Logic refs
-    const modeRef = useRef(mode);
-    const animationRef = useRef(activeAnimation);
-    const paramsRef = useRef({
-      attractionSensitivity,
-      pinchSensitivity,
-      morphSpeed,
-      iterations,
-      power,
-      interactiveMode,
-      colorMode,
-    });
-
-    useEffect(() => {
-      modeRef.current = mode;
-    }, [mode]);
-
-    useEffect(() => {
-      animationRef.current = activeAnimation;
-    }, [activeAnimation]);
-
-    useEffect(() => {
-      paramsRef.current = {
-        attractionSensitivity,
-        pinchSensitivity,
-        morphSpeed,
-        iterations,
-        power,
-        interactiveMode,
-        colorMode,
-      };
-    }, [attractionSensitivity, pinchSensitivity, morphSpeed, iterations, power, interactiveMode, colorMode]);
-
-    useImperativeHandle(ref, () => ({
-      captureImage: () => {
-        if (rendererRef.current && sceneRef.current && cameraRef.current) {
-          rendererRef.current.render(sceneRef.current, cameraRef.current);
-          return rendererRef.current.domElement.toDataURL("image/png");
-        }
-        return "";
-      },
-    }));
-
-    const isVisual2D = () => {
-      const m = modeRef.current;
-      const { interactiveMode } = paramsRef.current;
-      if (interactiveMode) return false;
-      return (
-        m === FractalMode.JULIA_2D ||
-        m === FractalMode.MANDELBROT ||
-        m === FractalMode.TRICORN ||
-        m === FractalMode.BURNING_SHIP
-      );
-    };
-
-    // --- MOUSE CONTROLS ---
-    useEffect(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const handleWheel = (e: WheelEvent) => {
-        e.preventDefault();
-        const zoomSpeed = 0.05;
-        const delta = -Math.sign(e.deltaY) * zoomSpeed;
-        navRef.current.zoom *= 1 + delta;
-        navRef.current.zoom = Math.max(0.1, Math.min(navRef.current.zoom, 10000.0));
-      };
-
-      const handleMouseDown = (e: MouseEvent) => {
-        navRef.current.isDragging = true;
-        navRef.current.lastMouse.set(e.clientX, e.clientY);
-      };
-
-      const handleMouseMove = (e: MouseEvent) => {
-        if (!navRef.current.isDragging) return;
-        const dx = e.clientX - navRef.current.lastMouse.x;
-        const dy = e.clientY - navRef.current.lastMouse.y;
-
-        const panSpeed = 0.005 / navRef.current.zoom;
-        navRef.current.pan.x -= dx * panSpeed;
-        navRef.current.pan.y += dy * panSpeed;
-
-        navRef.current.lastMouse.set(e.clientX, e.clientY);
-      };
-
-      const handleMouseUp = () => {
-        navRef.current.isDragging = false;
-      };
-
-      canvas.addEventListener("wheel", handleWheel, { passive: false });
-      canvas.addEventListener("mousedown", handleMouseDown);
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-
-      return () => {
-        canvas.removeEventListener("wheel", handleWheel);
-        canvas.removeEventListener("mousedown", handleMouseDown);
-        // FIX: Ensure window listeners are cleaned up to prevent leaks
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-    }, []);
-
-    useEffect(() => {
-      let isActive = true;
-
-      if (!containerRef.current || !canvasRef.current || !videoRef.current) return;
-
-      // --- Three.js Init ---
-      const scene = new THREE.Scene();
-      sceneRef.current = scene;
-
-      const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight;
-
-      const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-      camera.position.z = 5;
-      cameraRef.current = camera;
-
-      const renderer = new THREE.WebGLRenderer({
-        canvas: canvasRef.current,
-        antialias: false,
-        powerPreference: "high-performance",
-        alpha: true,
-        preserveDrawingBuffer: true,
-      });
-
-      renderer.setClearColor(0xffffff, 1);
-      renderer.setSize(width, height);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-      rendererRef.current = renderer;
-
-      // --- Particles ---
-      const geometry = new THREE.BufferGeometry();
-      const positions = new Float32Array(PARTICLE_COUNT * 3);
-      const sizes = new Float32Array(PARTICLE_COUNT);
-      const randoms = new Float32Array(PARTICLE_COUNT * 3);
-
-      const radius = 3.0;
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const u = Math.random();
-        const v = Math.random();
-        const theta = 2 * Math.PI * u;
-        const phi = Math.acos(2 * v - 1);
-        const r = Math.cbrt(Math.random()) * radius;
-
-        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        positions[i * 3 + 2] = r * Math.cos(phi);
-
-        sizes[i] = Math.random() * 1.5 + 0.5;
-        randoms[i * 3] = Math.random();
-        randoms[i * 3 + 1] = Math.random();
-        randoms[i * 3 + 2] = Math.random();
-      }
-
-      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
-      geometry.setAttribute("aRandom", new THREE.BufferAttribute(randoms, 3));
-
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          uTime: { value: 0 },
-          uMode: { value: 0 },
-          uHandPos: { value: new THREE.Vector3(100, 100, 100) },
-          uAttractStrength: { value: 0 },
-          uRepelStrength: { value: 0 },
-          uPower: { value: 8.0 },
-          uJuliaC: { value: new THREE.Vector2(0.355, 0.355) },
-          uPinchScale: { value: 0.0 },
-          uExplosion: { value: 0.0 },
-          uChaos: { value: 0.0 },
-          uSnap: { value: 0.0 },
-          uMaxIter: { value: 20.0 },
-          uVisualMode: { value: 0.0 },
-          uColorMode: { value: 0.0 },
-          uZoom: { value: 1.0 },
-          uPan: { value: new THREE.Vector2(0, 0) },
-        },
-        vertexShader,
-        fragmentShader,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      materialRef.current = material;
-
-      const particles = new THREE.Points(geometry, material);
-      scene.add(particles);
-      particlesRef.current = particles;
-
-      // --- Post Processing ---
-      const composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-      const bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(width, height),
-        0.8,
-        0.5,
-        0.2
-      );
-      composer.addPass(bloomPass);
-      composerRef.current = composer;
-      bloomPassRef.current = bloomPass;
-
-      // --- MediaPipe ---
-      const hands = new Hands({
-        locateFile: (file) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`,
-      });
-      hands.setOptions({
-        maxNumHands: 2,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      });
-
-      hands.onResults((results: Results) => {
-        if (!isActive) return;
-        const landmarks = results.multiHandLandmarks;
-        if (landmarks.length > 0) {
-          const g = gesturesRef.current;
-          g.isVisible = true;
-          const hand1 = landmarks[0];
-          g.indexTip = {
-            x: (hand1[8].x - 0.5) * -12,
-            y: (hand1[8].y - 0.5) * -8,
-            z: 0,
-          };
-          const dist = Math.sqrt(
-            Math.pow(hand1[4].x - hand1[8].x, 2) +
-              Math.pow(hand1[4].y - hand1[8].y, 2)
-          );
-          g.pinchDistance = dist;
-          g.isPinching = dist < 0.05;
-          g.isSnapping =
-            Math.sqrt(
-              Math.pow(hand1[4].x - hand1[12].x, 2) +
-                Math.pow(hand1[4].y - hand1[12].y, 2)
-            ) < 0.04 && dist > 0.06;
-          g.wristRotation = Math.atan2(
-            hand1[0].y - hand1[9].y,
-            hand1[0].x - hand1[9].x
-          );
-          const palmDist = Math.sqrt(
-            Math.pow(hand1[5].x - hand1[17].x, 2) +
-              Math.pow(hand1[5].y - hand1[17].y, 2)
-          );
-          g.isPalmOpen = palmDist > 0.15 && !g.isPinching;
-          g.isStopped = g.isPalmOpen;
-
-          let tipSum = 0;
-          [8, 12, 16, 20].forEach((i) => {
-            tipSum += Math.sqrt(
-              Math.pow(hand1[i].x - hand1[0].x, 2) +
-                Math.pow(hand1[i].y - hand1[0].y, 2)
-            );
-          });
-          g.isFist = tipSum / 4 < 0.3 && !g.isPalmOpen;
-
-          const h = waveHistoryRef.current;
-          h.push(hand1[9].x);
-          if (h.length > 20) h.shift();
-          let range = 0;
-          if (h.length > 10) range = Math.max(...h) - Math.min(...h);
-          g.isWaving = range > 0.25 && !g.isFist;
-
-          if (landmarks.length === 2) {
-            g.isClapping =
-              Math.sqrt(
-                Math.pow(hand1[9].x - landmarks[1][9].x, 2) +
-                  Math.pow(hand1[9].y - landmarks[1][9].y, 2)
-              ) < 0.12;
-          } else {
-            g.isClapping = false;
-          }
+    for (float i = 0.0; i < 100.0; i++) {
+        if (i >= loopLimit) break;
+        
+        if (mode < 2.5) { 
+            // Mandelbrot/Julia
+            z = csqr(z) + c;
+        } else if (abs(mode - 3.0) < 0.1) {
+            // Tricorn
+            vec2 zConj = vec2(z.x, -z.y);
+            z = csqr(zConj) + c;
         } else {
-          gesturesRef.current.isVisible = false;
-        }
-      });
-
-      const startCamera = async () => {
-        if (!navigator.mediaDevices?.getUserMedia) return;
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 },
-              facingMode: "user",
-            },
-          });
-          if (videoRef.current && isActive) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.onloadedmetadata = () => {
-              videoRef.current?.play();
-              requestAnimationFrame(processVideoFrame);
-            };
-          }
-        } catch (e) {
-          console.warn("Camera access denied or unavailable", e);
-        }
-      };
-
-      const processVideoFrame = async () => {
-        if (!isActive) return;
-        if (videoRef.current?.readyState >= 2) {
-          try {
-            await hands.send({ image: videoRef.current });
-          } catch {
-            // ignore transient errors
-          }
-        }
-        if (isActive) requestAnimationFrame(processVideoFrame);
-      };
-
-      startCamera();
-
-      const clock = new THREE.Clock();
-      let evolutionTime = 0.0;
-      let currentJuliaX = 0.355;
-      let currentJuliaY = 0.355;
-      let animPhase = 0.0;
-      let targetMode = 0.0;
-
-      const animate = () => {
-        if (!canvasRef.current || !isActive) return;
-
-        const dt = clock.getDelta();
-        const u = materialRef.current?.uniforms;
-        const {
-          attractionSensitivity,
-          pinchSensitivity,
-          morphSpeed,
-          iterations,
-          power,
-          interactiveMode,
-          colorMode,
-        } = paramsRef.current;
-        const anim = animationRef.current;
-        const visual2D = isVisual2D();
-
-        if (u) {
-          if (visual2D) {
-            u.uVisualMode.value = 1.0;
-            if (rendererRef.current) {
-              rendererRef.current.setClearColor(0x050017, 1.0);
-            }
-            if (bloomPassRef.current) bloomPassRef.current.strength = 0.0;
-            if (materialRef.current)
-              materialRef.current.blending = THREE.NormalBlending;
-            if (particlesRef.current) particlesRef.current.rotation.y = 0;
-          } else {
-            u.uVisualMode.value = 0.0;
-            if (rendererRef.current) {
-              rendererRef.current.setClearColor(0xffffff, 1.0);
-            }
-            if (bloomPassRef.current) bloomPassRef.current.strength = 0.8;
-            if (materialRef.current)
-              materialRef.current.blending = THREE.AdditiveBlending;
-          }
-
-          if (anim && anim !== "NONE") {
-            animPhase += dt;
-
-            if (anim === "MANDELBROT_DIVE") {
-              targetMode = 2.0;
-              navRef.current.zoom *= 1.0 + dt * 0.5;
-              const tx = -0.745;
-              const ty = 0.186;
-              navRef.current.pan.x = lerp(navRef.current.pan.x, tx, dt * 0.1);
-              navRef.current.pan.y = lerp(navRef.current.pan.y, ty, dt * 0.1);
-              u.uMaxIter.value = 100.0;
-            } else if (anim === "JULIA_MORPH") {
-              targetMode = 1.0;
-              navRef.current.zoom = 1.2;
-              navRef.current.pan.set(0, 0);
-              u.uJuliaC.value.x = Math.sin(animPhase * 0.5) * 0.7;
-              u.uJuliaC.value.y = Math.cos(animPhase * 0.3) * 0.7;
-            } else if (anim === "UNIVERSE_TOUR") {
-              const cycle = ((animPhase * 0.2) % 7.0) | 0;
-              targetMode = cycle;
-              u.uVisualMode.value = 1.0;
-            } else if (anim === "COLOR_SYMPHONY") {
-              evolutionTime += dt * 5.0;
-            } else if (anim === "INFINITY_ZOOM") {
-              targetMode = 2.0;
-              navRef.current.zoom *= 1.01;
-              if (navRef.current.zoom > 1000.0)
-                navRef.current.zoom = 1.0;
-            }
-
-            u.uVisualMode.value = 1.0;
-          } else {
-            u.uMaxIter.value = iterations;
-            u.uPower.value = power;
-            u.uColorMode.value = colorMode;
-
-            if (modeRef.current === FractalMode.JULIA_2D) targetMode = 1.0;
-            else if (modeRef.current === FractalMode.MANDELBROT)
-              targetMode = 2.0;
-            else if (modeRef.current === FractalMode.TRICORN) targetMode = 3.0;
-            else if (modeRef.current === FractalMode.BURNING_SHIP)
-              targetMode = 4.0;
-            else if (modeRef.current === FractalMode.MENGER_SPONGE)
-              targetMode = 5.0;
-            else if (modeRef.current === FractalMode.SIERPINSKI)
-              targetMode = 6.0;
-            else targetMode = 0.0;
-
-            if (interactiveMode && !visual2D) {
-              if (!gesturesRef.current.isStopped) evolutionTime += dt;
-              const g = gesturesRef.current;
-
-              if (g.isVisible) {
-                const rawPos = new THREE.Vector3(
-                  g.indexTip.x,
-                  g.indexTip.y,
-                  g.indexTip.z
-                );
-                smoothedRef.current.handPos.lerp(rawPos, 0.1);
-                u.uHandPos.value.copy(smoothedRef.current.handPos);
-
-                u.uAttractStrength.value = lerp(
-                  u.uAttractStrength.value,
-                  g.isPinching || g.isStopped ? 0 : attractionSensitivity,
-                  0.1
-                );
-                u.uRepelStrength.value = lerp(
-                  u.uRepelStrength.value,
-                  g.isStopped ? attractionSensitivity : 0,
-                  0.1
-                );
-                u.uPinchScale.value = lerp(
-                  u.uPinchScale.value,
-                  g.isPinching ? pinchSensitivity : 0,
-                  0.1
-                );
-                u.uExplosion.value = lerp(
-                  u.uExplosion.value,
-                  g.isClapping ? 1 : 0,
-                  0.1
-                );
-                u.uChaos.value = lerp(
-                  u.uChaos.value,
-                  g.isFist ? 1 : 0,
-                  0.1
-                );
-                u.uSnap.value = lerp(
-                  u.uSnap.value,
-                  g.isSnapping ? 1 : 0,
-                  0.1
-                );
-
-                smoothedRef.current.rotation = lerp(
-                  smoothedRef.current.rotation,
-                  g.wristRotation,
-                  morphSpeed
-                );
-                currentJuliaX =
-                  0.7885 * Math.cos(smoothedRef.current.rotation * 2.5);
-                currentJuliaY =
-                  0.7885 * Math.sin(smoothedRef.current.rotation * 2.5);
-                u.uJuliaC.value.set(currentJuliaX, currentJuliaY);
-
-                if (g.isWaving && cameraRef.current) {
-                  cameraRef.current.position.x = lerp(
-                    cameraRef.current.position.x,
-                    g.indexTip.x * 0.5,
-                    0.05
-                  );
-                }
-              } else {
-                u.uHandPos.value.set(100, 100, 100);
-                u.uAttractStrength.value *= 0.95;
-              }
-            } else {
-              u.uHandPos.value.set(100, 100, 100);
-              u.uAttractStrength.value = 0.0;
-              u.uRepelStrength.value = 0.0;
-              u.uPinchScale.value = 0.0;
-            }
-          }
-
-          u.uMode.value += (targetMode - u.uMode.value) * dt * 3.0;
-          u.uTime.value = evolutionTime;
-          u.uZoom.value = navRef.current.zoom;
-          u.uPan.value = navRef.current.pan;
-
-          if (cameraRef.current) {
-            if (visual2D) {
-              cameraRef.current.position.set(0, 0, 3);
-              cameraRef.current.lookAt(0, 0, 0);
-            } else if (
-              interactiveMode &&
-              (!gesturesRef.current.isVisible || !gesturesRef.current.isWaving)
-            ) {
-              cameraRef.current.position.x = Math.sin(evolutionTime * 0.1) * 0.5;
-              cameraRef.current.position.y = Math.cos(evolutionTime * 0.15) * 0.5;
-              cameraRef.current.lookAt(0, 0, 0);
-            } else {
-              cameraRef.current.position.set(0, 0, 5);
-              cameraRef.current.lookAt(0, 0, 0);
-            }
-          }
-
-          if (particlesRef.current) {
-            particlesRef.current.rotation.y =
-              !visual2D && interactiveMode ? evolutionTime * 0.05 : 0;
-          }
+            // Burning Ship
+            vec2 zAbs = vec2(abs(z.x), abs(z.y));
+            z = csqr(zAbs) + c;
         }
 
-        composerRef.current?.render();
-        if (isActive) requestAnimationFrame(animate);
-      };
-
-      animate();
-
-      const resizeObserver = new ResizeObserver(() => {
-        if (!containerRef.current || !cameraRef.current || !rendererRef.current)
-          return;
-        const w = containerRef.current.clientWidth;
-        const h = containerRef.current.clientHeight;
-        cameraRef.current.aspect = w / h;
-        cameraRef.current.updateProjectionMatrix();
-        rendererRef.current.setSize(w, h);
-        composerRef.current?.setSize(w, h);
-      });
-      resizeObserver.observe(containerRef.current);
-
-      return () => {
-        isActive = false;
-        resizeObserver.disconnect();
-        renderer.dispose();
-        try {
-          hands.close();
-        } catch {
-          // ignore
+        if (dot(z, z) > 4.0) {
+            break;
         }
-      };
-    }, []);
+        iter++;
+    }
+    
+    float smoothIter = iter - log2(log2(dot(z,z))) + 4.0;
+    return vec3(z.x, z.y, smoothIter / loopLimit);
+}
 
-    return (
-      <div>
-        <div className="w-full h-full cursor-move" ref={containerRef}>
-          <canvas className="block w-full h-full" ref={canvasRef} />
-          <video className="hidden" ref={videoRef} playsInline muted />
-        </div>
-      </div>
-    );
-  }
-);
+// Color Palette Function
+vec3 getPalette(float t, float mode) {
+    vec3 c1, c2, c3;
+    float pulse = 0.5 + 0.5 * sin(t * 3.0 + uTime * 0.1);
+    if (uVisualMode > 0.5) pulse = 0.5 + 0.5 * sin(t * 3.0);
 
-FractalVis.displayName = "FractalVis";
-export default FractalVis;
+    // Cosmic (Default)
+    if (mode < 0.5) {
+        c1 = vec3(0.02, 0.01, 0.10); // Indigo
+        c2 = vec3(0.15, 0.05, 0.25); // Plum
+        c3 = vec3(0.30, 0.20, 0.50); // Lavender
+        vec3 col = mix(c1, c2, pulse);
+        return mix(col, c3, pow(pulse, 4.0) * 0.4); 
+    } 
+    // Magma
+    else if (mode < 1.5) {
+         c1 = vec3(0.1, 0.0, 0.0); // Dark Red
+         c2 = vec3(0.6, 0.1, 0.0); // Red Orange
+         c3 = vec3(1.0, 0.7, 0.1); // Bright Yellow
+         vec3 col = mix(c1, c2, pulse);
+         return mix(col, c3, pow(pulse, 3.0));
+    }
+    // Aqua
+    else if (mode < 2.5) {
+         c1 = vec3(0.0, 0.1, 0.2); // Dark Blue
+         c2 = vec3(0.0, 0.4, 0.6); // Cyan
+         c3 = vec3(0.6, 0.9, 1.0); // White Cyan
+         vec3 col = mix(c1, c2, pulse);
+         return mix(col, c3, pow(pulse, 5.0) * 0.5);
+    }
+    // Matrix / Toxic
+    else if (mode < 3.5) {
+         c1 = vec3(0.0, 0.1, 0.0); // Dark Green
+         c2 = vec3(0.1, 0.4, 0.1); // Green
+         c3 = vec3(0.4, 1.0, 0.4); // Bright Green
+         vec3 col = mix(c1, c2, pulse);
+         return mix(col, c3, pow(pulse, 8.0) * 0.8);
+    }
+    // Cyberpunk
+    else {
+         c1 = vec3(0.15, 0.0, 0.3); // Deep Purple
+         c2 = vec3(0.0, 0.2, 0.5); // Blue
+         c3 = vec3(1.0, 0.0, 0.8); // Neon Pink
+         vec3 col = mix(c1, c2, pulse);
+         return mix(col, c3, pow(pulse, 2.0) * 0.5);
+    }
+}
+
+void main() {
+    vec3 originalPos = position;
+    vec3 targetPos = originalPos;
+    float mode = uMode;
+    
+    // --- 3D Calculation ---
+    vec3 pos3D = originalPos;
+    if (mode < 0.5) {
+        // Mandelbulb
+        float dist = DE_Mandelbulb(normalize(originalPos) * 1.2, uPower);
+        pos3D = normalize(originalPos) * (1.2 - dist); 
+    } else if (mode > 4.5 && mode < 5.5) {
+        // Menger
+        float dist = DE_MengerSponge(originalPos * 1.5);
+        pos3D = normalize(originalPos) * (1.5 - dist) * 1.2;
+    } else if (mode > 5.5) {
+        // Sierpinski
+        float dist = DE_Sierpinski(originalPos * 1.5);
+        pos3D = normalize(originalPos) * (1.5 - dist) * 1.0;
+    }
+    
+    // --- 2D Calculation ---
+    vec3 fractalResult = vec3(0.0);
+    vec3 pos2D = vec3(0.0);
+    
+    if (mode >= 0.5 && mode <= 4.5) {
+         // Flatten and apply navigation
+         vec2 flatPos = originalPos.xy * 2.0;
+         
+         // Apply Zoom and Pan
+         vec2 navPos = (flatPos / uZoom) + uPan;
+         
+         fractalResult = IterateFractal(navPos, mode);
+         
+         float zDepth = (fractalResult.z) * 0.5; 
+         
+         // Visual cleanup for 2D mode
+         if (fractalResult.z < 0.05) {
+            flatPos *= 6.0; 
+            zDepth = -20.0;
+         }
+         
+         pos2D = vec3(originalPos.x * 4.0, originalPos.y * 3.0, zDepth * 3.0);
+    }
+    
+    // Switcher
+    if (mode < 0.5 || mode > 4.5) {
+        targetPos = pos3D;
+    } else {
+        targetPos = pos2D;
+    }
+    
+    // --- INTERACTIONS ---
+    if (uVisualMode < 0.5) {
+        // Only apply chaotic distortions in interactive mode
+        if (uChaos > 0.05) {
+            targetPos.x += sin(targetPos.y * 20.0 + uTime * 50.0) * uChaos * 0.5;
+            targetPos.y += cos(targetPos.z * 20.0 + uTime * 50.0) * uChaos * 0.5;
+            targetPos.z += sin(targetPos.x * 20.0 + uTime * 50.0) * uChaos * 0.5;
+        }
+        if (uExplosion > 0.05) {
+            vec3 explodeDir = normalize(originalPos + vec3(0.001));
+            targetPos += explodeDir * uExplosion * 30.0 * (0.5 + aRandom.x);
+        }
+        if (uSnap > 0.05) {
+            float ripple = sin(length(originalPos) * 10.0 - uTime * 20.0);
+            targetPos += normalize(originalPos) * ripple * uSnap * 0.8;
+        }
+        
+        float dHand = distance(targetPos, uHandPos);
+        if (uAttractStrength > 0.0 && dHand < 4.0) {
+            vec3 dir = normalize(uHandPos - targetPos);
+            float force = (1.0 - smoothstep(0.0, 4.0, dHand)) * uAttractStrength * 2.0;
+            targetPos += dir * force;
+        }
+        if (uRepelStrength > 0.0 && dHand < 6.0) {
+            vec3 dir = normalize(targetPos - uHandPos);
+            float force = (1.0 - smoothstep(0.0, 6.0, dHand)) * uRepelStrength * 3.0;
+            targetPos += dir * force;
+        }
+        
+        targetPos *= (1.0 + uPinchScale * 0.3);
+    }
+
+    vec4 mvPosition = modelViewMatrix * vec4(targetPos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    
+    float sizeMod = aSize;
+    if (uVisualMode < 0.5) {
+        sizeMod *= (1.0 + uPinchScale + uExplosion * 4.0 + uChaos * 2.0 + uSnap * 2.0);
+    }
+    
+    gl_PointSize = sizeMod * (120.0 / -mvPosition.z);
+    
+    // Color
+    float t = fractalResult.z + uTime * 0.05 + aRandom.x * 0.2;
+    if (mode < 0.5 || mode > 4.5) {
+        t = length(targetPos) * 0.2 + uTime * 0.1;
+    }
+    
+    vec3 color = getPalette(t, uColorMode);
+    vec3 darkBase = vec3(0.0, 0.0, 0.02); 
+    
+    // In visual mode, remove background particles to clean up view
+    if (uVisualMode > 0.5) {
+        if (fractalResult.z < 0.05 && mode >= 0.5 && mode <= 4.5) {
+             vAlpha = 0.0; // Hide background in 2D visual mode
+        } else {
+             vAlpha = 0.8;
+        }
+        vColor = color;
+    } else {
+        vColor = mix(darkBase, color, 0.6);
+        vColor = mix(vColor, vec3(0.6, 0.5, 0.8), uExplosion);
+        vColor = mix(vColor, vec3(0.4, 0.0, 0.2), uChaos);
+        vColor = mix(vColor, vec3(0.5, 0.3, 0.9), uSnap);
+        vAlpha = 0.4 + uExplosion * 0.4 + uSnap * 0.4;
+    }
+}
+`;
+
+export const fragmentShader = `
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+    vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+    float r = dot(cxy, cxy);
+    if (r > 1.0) discard;
+    float alpha = vAlpha * (1.0 - r);
+    gl_FragColor = vec4(vColor, alpha);
+}
+`;
