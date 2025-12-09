@@ -207,6 +207,7 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
       return () => {
         canvas.removeEventListener("wheel", handleWheel);
         canvas.removeEventListener("mousedown", handleMouseDown);
+        // FIX: Ensure window listeners are cleaned up to prevent leaks
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
       };
