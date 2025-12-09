@@ -74,7 +74,7 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
     const materialRef = useRef<THREE.ShaderMaterial | null>(null);
     const particlesRef = useRef<THREE.Points | null>(null);
     const composerRef = useRef<EffectComposer | null>(null);
-    const bloomPassRef = useRef<UnrealBloomPass | null>(null); // ⭐
+    const bloomPassRef = useRef<UnrealBloomPass | null>(null);
 
     // Navigation State
     const navRef = useRef({
@@ -153,7 +153,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
       },
     }));
 
-    // ⭐ Helper: when should we show OG crisp 2D fractal?
     const isVisual2D = () => {
       const m = modeRef.current;
       const { interactiveMode } = paramsRef.current;
@@ -237,7 +236,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
         preserveDrawingBuffer: true,
       });
 
-      // default – will be overridden per-frame
       renderer.setClearColor(0xffffff, 1);
       renderer.setSize(width, height);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -286,156 +284,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
           uSnap: { value: 0.0 },
           uMaxIter: { value: 20.0 },
           uVisualMode: { value: 0.0 },
-          uVisualMode: { value: 0.0 },
-          uVisualMode2D: { value: 0.0 },
-          uVisualMode3D: { value: 0.0 },
-          uVisualMode_legacy: { value: 0.0 },
-          uVisualModeFlag: { value: 0.0 },
-          uVisualModeStrict: { value: 0.0 },
-          uVisualModePure2D: { value: 0.0 }, // ignore if not used in shader
-          uVisualModeOverride: { value: 0.0 },
-          uVisualModeRaw: { value: 0.0 },
-          uVisualModeMask: { value: 0.0 },
-          uVisualModeAlpha: { value: 0.0 },
-          uVisualModeGlobal: { value: 0.0 },
-          uVisualModeMix: { value: 0.0 },
-          uVisualModeClamped: { value: 0.0 },
-          uVisualModeDebug: { value: 0.0 },
-          uVisualModeUnused: { value: 0.0 },
-          uVisualModeSpare: { value: 0.0 },
-          uVisualModeSpare2: { value: 0.0 },
-          uVisualModeSpare3: { value: 0.0 },
-          uVisualModeSpare4: { value: 0.0 },
-          uVisualModeSpare5: { value: 0.0 },
-          uVisualModeSpare6: { value: 0.0 },
-          uVisualModeSpare7: { value: 0.0 },
-          uVisualModeSpare8: { value: 0.0 },
-          uVisualModeSpare9: { value: 0.0 },
-          uVisualModeSpare10: { value: 0.0 },
-          uVisualModeSpare11: { value: 0.0 },
-          uVisualModeSpare12: { value: 0.0 },
-          uVisualModeSpare13: { value: 0.0 },
-          uVisualModeSpare14: { value: 0.0 }, // these extras are harmless – shader ignores them
-          uVisualModeSpare15: { value: 0.0 },
-          uVisualModeSpare16: { value: 0.0 },
-          uVisualModeSpare17: { value: 0.0 },
-          uVisualModeSpare18: { value: 0.0 },
-          uVisualModeSpare19: { value: 0.0 },
-
-          uVisualModeMain: { value: 0.0 }, // main one you already use in shader
-          uVisualModeOld: { value: 0.0 },
-
-          uVisualModeDummy: { value: 0.0 },
-
-          uVisualModeFinal: { value: 0.0 },
-
-          // actual useful uniforms
-          uVisualModeValue: { value: 0.0 },
-
-          uVisualModeClean: { value: 0.0 },
-
-          uVisualModeSafe: { value: 0.0 },
-
-          uVisualModeCore: { value: 0.0 },
-
-          uVisualModeLogic: { value: 0.0 },
-
-          uVisualModeState: { value: 0.0 },
-
-          uVisualModeActive: { value: 0.0 },
-
-          uVisualModeSwitch: { value: 0.0 },
-
-          uVisualModeStatus: { value: 0.0 },
-
-          uVisualModePrimary: { value: 0.0 },
-
-          uVisualModeMainFlag: { value: 0.0 },
-
-          // END of nonsense – real ones below
-          uVisualModeReal: { value: 0.0 },
-
-          uVisualModeReal2D: { value: 0.0 },
-
-          uVisualModeReal3D: { value: 0.0 },
-
-          uVisualModeRealMain: { value: 0.0 },
-
-          uVisualModeRealFinal: { value: 0.0 },
-
-          uVisualModeEffective: { value: 0.0 },
-
-          uVisualModeEffective2D: { value: 0.0 },
-
-          uVisualModeEffective3D: { value: 0.0 },
-
-          // Actual needed ones
-          uVisualModeFlagReal: { value: 0.0 },
-
-          uVisualModeKey: { value: 0.0 },
-
-          uVisualModeCoreFlag: { value: 0.0 },
-
-          uVisualModeMainState: { value: 0.0 },
-
-          uVisualModeMainActive: { value: 0.0 },
-
-          uVisualModeMainReal: { value: 0.0 },
-
-          uVisualModeMainCore: { value: 0.0 },
-
-          uVisualModeMainClean: { value: 0.0 },
-
-          uVisualModeMainLogic: { value: 0.0 },
-
-          uVisualModeMainSwitch: { value: 0.0 },
-
-          uVisualModeMainStatus: { value: 0.0 },
-
-          // Actually just use this one in shader:
-          uVisualModeMainUseThis: { value: 0.0 },
-
-          uVisualModeMainUseThis2D: { value: 0.0 },
-
-          uVisualModeMainUseThis3D: { value: 0.0 },
-
-          uVisualModeMainUseThisFlag: { value: 0.0 },
-
-          uVisualModeToUse: { value: 0.0 },
-
-          uVisualModeNumber: { value: 0.0 },
-
-          uVisualModeSelected: { value: 0.0 },
-
-          uVisualMode2DSelected: { value: 0.0 },
-
-          uVisualMode3DSelected: { value: 0.0 },
-
-          uVisualModeCurrent: { value: 0.0 },
-
-          uVisualModeEnabled: { value: 0.0 },
-
-          uVisualModeChoice: { value: 0.0 },
-
-          uVisualModeOption: { value: 0.0 },
-
-          uVisualModePick: { value: 0.0 },
-
-          uVisualModeIndex: { value: 0.0 },
-
-          uVisualModeId: { value: 0.0 },
-
-          uVisualModeVal: { value: 0.0 },
-
-          uVisualModeF: { value: 0.0 },
-
-          uVisualModeX: { value: 0.0 },
-
-          uVisualModeY: { value: 0.0 },
-
-          uVisualModeZ: { value: 0.0 },
-
-          // color + nav
           uColorMode: { value: 0.0 },
           uZoom: { value: 1.0 },
           uPan: { value: new THREE.Vector2(0, 0) },
@@ -511,7 +359,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
           g.isPalmOpen = palmDist > 0.15 && !g.isPinching;
           g.isStopped = g.isPalmOpen;
 
-          // Fist Check
           let tipSum = 0;
           [8, 12, 16, 20].forEach((i) => {
             tipSum += Math.sqrt(
@@ -521,7 +368,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
           });
           g.isFist = tipSum / 4 < 0.3 && !g.isPalmOpen;
 
-          // Wave Check
           const h = waveHistoryRef.current;
           h.push(hand1[9].x);
           if (h.length > 20) h.shift();
@@ -529,7 +375,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
           if (h.length > 10) range = Math.max(...h) - Math.min(...h);
           g.isWaving = range > 0.25 && !g.isFist;
 
-          // Clap Check
           if (landmarks.length === 2) {
             g.isClapping =
               Math.sqrt(
@@ -602,30 +447,28 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
           colorMode,
         } = paramsRef.current;
         const anim = animationRef.current;
-        const visual2D = isVisual2D(); // ⭐
+        const visual2D = isVisual2D();
 
         if (u) {
-          // ⭐ visual2D vs interactive render style
           if (visual2D) {
-            u.uVisualMode.value = 1.0; // shader: pure visual 2D
+            u.uVisualMode.value = 1.0;
             if (rendererRef.current) {
-              rendererRef.current.setClearColor(0x050017, 1.0); // dark purple
+              rendererRef.current.setClearColor(0x050017, 1.0);
             }
             if (bloomPassRef.current) bloomPassRef.current.strength = 0.0;
             if (materialRef.current)
               materialRef.current.blending = THREE.NormalBlending;
             if (particlesRef.current) particlesRef.current.rotation.y = 0;
           } else {
-            u.uVisualMode.value = 0.0; // interactive / 3D style
+            u.uVisualMode.value = 0.0;
             if (rendererRef.current) {
-              rendererRef.current.setClearColor(0xffffff, 1.0); // white bg like before
+              rendererRef.current.setClearColor(0xffffff, 1.0);
             }
             if (bloomPassRef.current) bloomPassRef.current.strength = 0.8;
             if (materialRef.current)
               materialRef.current.blending = THREE.AdditiveBlending;
           }
 
-          // --- Animation presets (leave as-is) ---
           if (anim && anim !== "NONE") {
             animPhase += dt;
 
@@ -658,7 +501,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
 
             u.uVisualMode.value = 1.0;
           } else {
-            // --- Standard interactive / visual logic ---
             u.uMaxIter.value = iterations;
             u.uPower.value = power;
             u.uColorMode.value = colorMode;
@@ -742,7 +584,6 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
                 u.uAttractStrength.value *= 0.95;
               }
             } else {
-              // pure visual (either 3D or 2D)
               u.uHandPos.value.set(100, 100, 100);
               u.uAttractStrength.value = 0.0;
               u.uRepelStrength.value = 0.0;
@@ -750,13 +591,11 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
             }
           }
 
-          // Common uniforms
           u.uMode.value += (targetMode - u.uMode.value) * dt * 3.0;
           u.uTime.value = evolutionTime;
           u.uZoom.value = navRef.current.zoom;
           u.uPan.value = navRef.current.pan;
 
-          // Camera
           if (cameraRef.current) {
             if (visual2D) {
               cameraRef.current.position.set(0, 0, 3);
@@ -810,11 +649,14 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(
       };
     }, []);
 
-  return (
-  <div ref={containerRef} className="w-full h-full cursor-move">
-    <canvas ref={canvasRef} className="block w-full h-full" />
-    <video ref={videoRef} className="hidden" playsInline muted />
-  </div>
+    return (
+      <div ref={containerRef} className="w-full h-full cursor-move">
+        <canvas ref={canvasRef} className="block w-full h-full" />
+        <video ref={videoRef} className="hidden" playsInline muted />
+      </div>
+    );
+  }
 );
-});
-FractalVis.displayName = "FractalVis";  
+
+FractalVis.displayName = "FractalVis";
+export default FractalVis;
