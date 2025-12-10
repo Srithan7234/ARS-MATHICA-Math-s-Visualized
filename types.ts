@@ -1,3 +1,4 @@
+
 export enum FractalMode {
   MANDELBULB_3D = '3D',
   JULIA_2D = '2D',
@@ -6,6 +7,11 @@ export enum FractalMode {
   BURNING_SHIP = 'BURNING_SHIP',
   MENGER_SPONGE = 'MENGER_SPONGE',
   SIERPINSKI = 'SIERPINSKI'
+}
+
+export enum InteractionMode {
+  OBJECT_ORBIT = 'OBJECT_ORBIT', // Rotates around the fractal like an object
+  IMMERSIVE_FLY = 'IMMERSIVE_FLY' // Zooms into and flies through the fractal
 }
 
 export type AnimationPreset = 
@@ -27,16 +33,25 @@ export interface FractalParams {
 }
 
 export interface HandGestures {
+  // Positional
   indexTip: { x: number; y: number; z: number }; 
+  wristPos: { x: number; y: number; z: number };
+  
+  // Basic States
   isPinching: boolean;
-  pinchDistance: number;
   isPalmOpen: boolean;
   isFist: boolean; 
-  isSnapping: boolean; 
-  isWaving: boolean; 
-  isStopped: boolean; 
-  wristRotation: number; 
-  isVisible: boolean;
+  isPointing: boolean;
+  isVictory: boolean; // Peace sign
+
+  // Complex Actions
   isClapping: boolean; 
-  handsDistance: number;
+  isPunching: boolean; // Fast Z-movement
+  isTwoHandSmash: boolean; // Two fists close together
+  isSnapping: boolean; 
+  
+  // Metadata
+  handsDistance: number; // Distance between two hands if present
+  handsCount: number;
+  gestureName: string; // For HUD display
 }

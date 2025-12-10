@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Search, Sparkles, Clock, TrendingUp, Star } from 'lucide-react';
 
@@ -7,7 +6,7 @@ export const CommunityGallery: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
 
   return (
-    <div className="flex flex-col h-full bg-[#020205] text-gray-200 p-8 overflow-hidden">
+    <div className="flex flex-col h-full bg-black text-gray-200 p-8 overflow-hidden">
       {/* Header Section */}
       <div className="mb-8 shrink-0">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-400 to-purple-500 bg-clip-text text-transparent font-[Orbitron]">

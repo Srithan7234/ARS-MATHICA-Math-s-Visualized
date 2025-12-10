@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI } from "@google/genai";
 
 // Using process.env.API_KEY as per strict coding guidelines
@@ -74,6 +75,37 @@ export const analyzeFractalPattern = async (imageBase64: string): Promise<any> =
     }
 };
 
+export const optimizePrompt = async (originalPrompt: string): Promise<string> => {
+    const ai = getClient();
+    const prompt = `
+      Act as a professional generative art prompt engineer specializing in fractals and mathematical visualization.
+      Enhance the following user prompt to be more descriptive, artistic, and technically precise for a fractal generation model.
+      
+      Focus on:
+      - Mathematical terminology (e.g., recursive, self-similar, Euclidean, non-Euclidean)
+      - Lighting effects (e.g., volumetric, bioluminescent, ray-traced)
+      - Texture details (e.g., crystalline, liquid, metallic, obsidian)
+      - Composition (e.g., golden ratio, symmetry, chaos)
+      
+      Keep the original subject matter but elevate the description significantly.
+      
+      Original User Prompt: "${originalPrompt}"
+      
+      Return ONLY the optimized prompt text. Do not include any explanations.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+        });
+        return response.text?.trim() || originalPrompt;
+    } catch (error) {
+        console.error("Prompt Optimization Error", error);
+        return originalPrompt;
+    }
+};
+
 export const generateFractalArt = async (prompt: string, style: string, imageSize: string, refImage?: string): Promise<string> => {
     const ai = getClient();
 
@@ -81,7 +113,16 @@ export const generateFractalArt = async (prompt: string, style: string, imageSiz
       Create a high-quality, 8k resolution fractal artwork.
       Subject: ${prompt}
       Style: ${style} (Apply this artistic style rigorously).
-      Technical requirements: High recursive detail, self-similarity, mathematical precision, intricate geometry, volumetric lighting, cinematic composition.
+      
+      STRICT RENDERING RULES (FOR 2D MODELS):
+      Render the fractal using the SAME visual style as the input. 
+      DO NOT apply radial gradients, heatmap coloring, smoothing, blurring, or soft glow effects. 
+      The interior of the fractal must remain completely black. 
+      The boundary must follow the exact pixel-sharp outline without softening or feathering. 
+      Colors must follow the reference style only — do NOT replace them with red–orange–yellow gradients. 
+      Preserve the original fractal’s filaments, edges, and geometric detail exactly as shown.
+      
+      Technical requirements: High recursive detail, self-similarity, mathematical precision, intricate geometry.
     `;
 
     // Internal helper to try generation with a specific model

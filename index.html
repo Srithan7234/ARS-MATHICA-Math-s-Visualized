@@ -3,19 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ARS MATHICA - MATHS VISUALIZED</title>
-
-    <link rel="icon" type="image/png" href="/LOGO.png" />
-
+    <title>Gemini 3 Fractal Control</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-
-    <!-- MediaPipe Hands -->
+    <!-- Load MediaPipe Hands globally -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-
     <style>
       body {
-        background-color: #050505;
+        background-color: #000000;
         color: #ffffff;
         font-family: 'Inter', sans-serif;
         overflow: hidden;
@@ -27,26 +22,21 @@
         text-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
       }
     </style>
-
-    <script type="importmap">
-    {
-      "imports": {
-        "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-        "three/": "https://aistudiocdn.com/three@^0.181.2/",
-        "three": "https://aistudiocdn.com/three@^0.181.2",
-        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-        "react/": "https://aistudiocdn.com/react@^19.2.1/",
-        "react": "https://aistudiocdn.com/react@^19.2.1",
-        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0"
-      }
-    }
-    </script>
-  </head>
-
+<script type="importmap">
+{
+  "imports": {
+    "three/": "https://aistudiocdn.com/three@^0.181.2/",
+    "three": "https://aistudiocdn.com/three@^0.181.2",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0"
+  }
+}
+</script>
+</head>
   <body>
     <div id="root"></div>
-
-    <!-- 🔥 THIS IS THE MISSING PIECE 🔥 -->
-    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

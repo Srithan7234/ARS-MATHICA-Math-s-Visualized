@@ -3,7 +3,7 @@ import {
   Upload, Sparkles, Brain, Wand2, RefreshCw, Download, Share2, 
   Target, Info, AlertCircle, Scan, Palette, Maximize, X, Image as ImageIcon, Image, Key, Layers
 } from 'lucide-react';
-import { analyzeFractalPattern, generateFractalArt } from '../services/geminiService';
+import { analyzeFractalPattern, generateFractalArt, optimizePrompt } from '../services/geminiService';
 
 type ToolMode = 'DETECT' | 'PAINT';
 
@@ -22,7 +22,9 @@ export const DetectAndPaint: React.FC = () => {
   const [selectedStyle, setSelectedStyle] = useState("Pure Math");
   const [imageSize, setImageSize] = useState("1K");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const paintInputRef = useRef<HTMLInputElement>(null);
@@ -59,27 +61,51 @@ export const DetectAndPaint: React.FC = () => {
       }
   };
 
+  const handleOptimizePrompt = async () => {
+      if (!prompt) return;
+      setIsOptimizing(true);
+      setStatusMsg("Optimizing prompt with Gemini...");
+      
+      try {
+          const optimized = await optimizePrompt(prompt);
+          setPrompt(optimized);
+          setStatusMsg("Prompt enhanced!");
+          setTimeout(() => setStatusMsg(""), 2000);
+      } catch (e: any) {
+          console.error(e);
+          // Fail silently or show minor toast, keep original prompt
+      } finally {
+          setIsOptimizing(false);
+      }
+  };
+
   const runGeneration = async () => {
       if (!prompt) return;
       setErrorMsg(null);
       setGeneratedImage(null);
+      setIsGenerating(true);
+      setStatusMsg("Initializing Gemini Imaging...");
       
       try {
-          setIsGenerating(true);
-          const result = await generateFractalArt(prompt, selectedStyle, imageSize, paintImage || undefined);
-          setGeneratedImage(result);
+          setStatusMsg("Dreaming in Fractals...");
+          const resultUrl = await generateFractalArt(prompt, selectedStyle, imageSize, paintImage || undefined);
+          
+          setGeneratedImage(resultUrl);
+          setStatusMsg("");
+
       } catch (e: any) {
           console.error(e);
           setErrorMsg(e.message || "Generation failed.");
+          setStatusMsg("");
       } finally {
           setIsGenerating(false);
       }
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#020205] text-gray-200 overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-black text-gray-200 overflow-hidden">
         {/* --- Header --- */}
-        <div className="px-8 py-6 border-b border-white/5 bg-[#08080c]/50">
+        <div className="px-8 py-6 border-b border-white/5 bg-black/50">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent font-[Orbitron]">Creation Tools</h1>
             <p className="text-sm text-gray-500 mt-1">Analyze patterns or paint with mathematics</p>
             
@@ -104,10 +130,10 @@ export const DetectAndPaint: React.FC = () => {
         <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
             
             {errorMsg && (
-                <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded-xl flex items-center justify-between text-red-200">
+                <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded-xl flex items-center justify-between text-red-200 animate-in slide-in-from-top-2">
                     <div className="flex items-center gap-3">
                         <AlertCircle size={20} />
-                        <span>{errorMsg}</span>
+                        <span className="text-sm font-medium">{errorMsg}</span>
                     </div>
                     <button onClick={() => setErrorMsg(null)} className="p-1 hover:bg-red-900/40 rounded"><X size={16} /></button>
                 </div>
@@ -257,7 +283,17 @@ export const DetectAndPaint: React.FC = () => {
 
                         {/* Prompt Input */}
                         <div className="bg-[#0c0d15] border border-white/10 rounded-2xl p-6">
-                            <label className="text-sm font-bold text-white mb-3 block">What do you want to create?</label>
+                            <div className="flex justify-between items-center mb-3">
+                                <label className="text-sm font-bold text-white block">What do you want to create?</label>
+                                <button 
+                                    onClick={handleOptimizePrompt}
+                                    disabled={!prompt || isOptimizing}
+                                    className="flex items-center gap-1.5 px-3 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded-lg text-[10px] font-bold text-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                                >
+                                    <Sparkles size={12} className={isOptimizing ? "animate-spin" : "group-hover:text-purple-300"} /> 
+                                    {isOptimizing ? "Optimizing..." : "Enhance Prompt"}
+                                </button>
+                            </div>
                             <textarea 
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
@@ -322,8 +358,15 @@ export const DetectAndPaint: React.FC = () => {
                             className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-bold text-white shadow-lg hover:shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all mt-auto"
                         >
                             {isGenerating ? <RefreshCw className="animate-spin" /> : <Wand2 size={20} />}
-                            {isGenerating ? "Painting with Math..." : "Generate Masterpiece"}
+                            {isGenerating ? `Generating with Gemini 3...` : "Generate Masterpiece"}
                         </button>
+                        
+                        {/* Status Message */}
+                        {statusMsg && (
+                            <div className="text-center text-xs text-purple-400 font-mono animate-pulse">
+                                {statusMsg}
+                            </div>
+                        )}
                     </div>
 
                     {/* Right: Output (4 cols) */}
@@ -343,8 +386,8 @@ export const DetectAndPaint: React.FC = () => {
                                         <div className="flex items-center gap-3">
                                             <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400"><Target size={20}/></div>
                                             <div>
-                                                <div className="text-xs font-bold text-white">Fractal Fingerprint</div>
-                                                <div className="text-[10px] text-gray-500">ID: #{Math.floor(Math.random() * 9999999)}</div>
+                                                <div className="text-xs font-bold text-white">Gemini Fingerprint</div>
+                                                <div className="text-[10px] text-gray-500">Model: Gemini 3 Pro / Flash</div>
                                             </div>
                                         </div>
                                         <div className="text-[10px] text-gray-500">Seed: {Math.floor(Math.random() * 1000)}</div>
@@ -352,20 +395,20 @@ export const DetectAndPaint: React.FC = () => {
                                     
                                     <div className="grid grid-cols-4 gap-2 mb-4">
                                         <div className="text-center p-2 bg-[#0c0d15] rounded-lg">
-                                            <div className="text-xs font-bold text-white">1024</div>
-                                            <div className="text-[9px] text-gray-500">Iterations</div>
+                                            <div className="text-xs font-bold text-white">{imageSize}</div>
+                                            <div className="text-[9px] text-gray-500">Res</div>
                                         </div>
                                         <div className="text-center p-2 bg-[#0c0d15] rounded-lg">
-                                            <div className="text-xs font-bold text-white">5</div>
-                                            <div className="text-[9px] text-gray-500">Colors</div>
+                                            <div className="text-xs font-bold text-white">Google</div>
+                                            <div className="text-[9px] text-gray-500">Cloud</div>
                                         </div>
                                         <div className="text-center p-2 bg-[#0c0d15] rounded-lg">
-                                            <div className="text-xs font-bold text-white">3</div>
-                                            <div className="text-[9px] text-gray-500">Fractals</div>
+                                            <div className="text-xs font-bold text-white">Imagen</div>
+                                            <div className="text-[9px] text-gray-500">Engine</div>
                                         </div>
                                         <div className="text-center p-2 bg-[#0c0d15] rounded-lg">
-                                            <div className="text-xs font-bold text-white">70%</div>
-                                            <div className="text-[9px] text-gray-500">Glow</div>
+                                            <div className="text-xs font-bold text-white">High</div>
+                                            <div className="text-[9px] text-gray-500">Quality</div>
                                         </div>
                                     </div>
 
