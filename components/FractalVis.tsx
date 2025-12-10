@@ -226,8 +226,9 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight;
+    // Safety fallback if container is temporarily 0-size
+    const width = Math.max(1, containerRef.current.clientWidth);
+    const height = Math.max(1, containerRef.current.clientHeight);
     const aspect = width / height;
     const viewSize = 3.0; 
 
@@ -344,8 +345,9 @@ export const FractalVis = forwardRef<FractalVisRef, FractalVisProps>(({
         if (u && rendererRef.current && sceneRef.current && cameraRef.current) {
             
              // Handle Resize
-            const cw = containerRef.current?.clientWidth || width;
-            const ch = containerRef.current?.clientHeight || height;
+            const cw = Math.max(1, containerRef.current?.clientWidth || width);
+            const ch = Math.max(1, containerRef.current?.clientHeight || height);
+            
             if (canvasRef.current!.width !== cw * Math.min(window.devicePixelRatio, 2.0) || canvasRef.current!.height !== ch * Math.min(window.devicePixelRatio, 2.0)) {
                 rendererRef.current.setSize(cw, ch);
                 composerRef.current?.setSize(cw, ch);

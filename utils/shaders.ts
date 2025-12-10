@@ -5,6 +5,8 @@
 
 
 
+
+
 // --- SHARED UTILS ---
 const commonFunctions = `
 uniform float uTime;
@@ -90,7 +92,8 @@ vec2 csqr(vec2 z) {
 }
 
 vec3 Iterate2D(vec2 uv, float mode) {
-    vec2 z, c;
+    vec2 z = vec2(0.0);
+    vec2 c = vec2(0.0);
     
     if (abs(mode - 1.0) < 0.1) { // Julia
         z = uv;
@@ -335,7 +338,10 @@ vec3 Raymarch(vec2 uv) {
 
 void main() {
     vec2 uv = (vUv - 0.5) * 2.0;
-    uv.x *= uResolution.x / uResolution.y;
+    // Fix: Prevent division by zero if uResolution is not initialized
+    if (uResolution.y > 0.0) {
+        uv.x *= uResolution.x / uResolution.y;
+    }
 
     vec3 col = vec3(0.0);
 
@@ -345,7 +351,10 @@ void main() {
         col = Raymarch(uv);
     } else {
         // 2D Zoom: Divide UV by zoom to shrink viewport (magnify image)
-        vec2 fractalUV = uv / uZoom + uPan;
+        float zVal = uZoom;
+        if (zVal < 0.0001) zVal = 0.0001; // Safety
+        
+        vec2 fractalUV = uv / zVal + uPan;
         col = Iterate2D(fractalUV, uMode);
     }
     
@@ -477,11 +486,10 @@ void main() {
     } 
     // 2D Logic
     else {
-        // Instead of moving particles to escape position (which scatters them),
-        // we map the particle's screen-space position to fractal-space coordinates.
-        // This makes the particle cloud act like a low-res pixel grid or sensor array.
-        
-        vec2 fractalCoords = (pos.xy * 2.0 / uZoom) + uPan;
+        float zVal = uZoom;
+        if (zVal < 0.0001) zVal = 0.0001;
+
+        vec2 fractalCoords = (pos.xy * 2.0 / zVal) + uPan;
         vec2 z = fractalCoords; 
         vec2 c = uJuliaC;
         
